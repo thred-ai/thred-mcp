@@ -14,7 +14,7 @@ import {
 
 const BASE_URL = process.env.THRED_BASE_URL;
 const TRANSPORT = process.env.TRANSPORT ?? "stdio"; // "stdio" | "http"
-
+//
 // In stdio mode, the API key comes from the env var (single user).
 // In HTTP mode, each client sends their own key via Authorization header.
 const STATIC_API_KEY = process.env.THRED_API_KEY;
