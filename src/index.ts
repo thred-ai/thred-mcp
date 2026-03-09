@@ -46,30 +46,44 @@ function formatCustomerSummary(data: CustomerChatResponse): string {
   if (data.name) lines.push(`**Name:** ${data.name}`);
   if (data.email) lines.push(`**Email:** ${data.email}`);
   if (data.company) lines.push(`**Company:** ${data.company}`);
+  if (data.platform) lines.push(`**Platform:** ${data.platform}`);
   lines.push(`**Status:** ${data.status}`);
 
   if (data.progress !== undefined) {
     lines.push(`**Progress:** ${data.progress}%`);
   }
+  if (data.link) {
+    lines.push(`**Link:** ${data.link}`);
+  }
   if (data.summary) {
     lines.push(`\n**Summary:**\n${data.summary}`);
+  }
+  if (data.productsDiscussed && data.productsDiscussed.length > 0) {
+    lines.push(
+      `\n**Products Discussed:**\n${data.productsDiscussed.map((p) => `- ${p}`).join("\n")}`
+    );
+  }
+  if (data.suggestions && data.suggestions.length > 0) {
+    lines.push(
+      `\n**Suggestions:**\n${data.suggestions.map((s) => `- ${s}`).join("\n")}`
+    );
   }
   if (data.insights) {
     const { mainConcerns, buyingSignals, competitorsConsidered } =
       data.insights;
     if (mainConcerns.length > 0) {
       lines.push(
-        `\n**Main Concerns:**\n${mainConcerns.map((c) => `- ${c.signal} (turn ${c.turn}, priority ${c.priority})`).join("\n")}`
+        `\n**Main Concerns:**\n${mainConcerns.map((c) => `- ${c.signal} (priority ${c.priority})`).join("\n")}`
       );
     }
     if (buyingSignals.length > 0) {
       lines.push(
-        `\n**Buying Signals:**\n${buyingSignals.map((s) => `- ${s.signal} (turn ${s.turn}, priority ${s.priority})`).join("\n")}`
+        `\n**Buying Signals:**\n${buyingSignals.map((s) => `- ${s.signal} (priority ${s.priority})`).join("\n")}`
       );
     }
     if (competitorsConsidered.length > 0) {
       lines.push(
-        `\n**Competitors Considered:**\n${competitorsConsidered.map((c) => `- ${c.signal} (turn ${c.turn})`).join("\n")}`
+        `\n**Competitors Considered:**\n${competitorsConsidered.map((c) => `- ${c.signal}`).join("\n")}`
       );
     }
   }
@@ -262,6 +276,72 @@ function createServer(apiClient: ThredApiClient): McpServer {
             {
               type: "text" as const,
               text: `## Company: ${data.company}\n\n**Total conversations:** ${data.results.length}\n\n---\n\n${customerSections.join("\n\n---\n\n")}`,
+            },
+          ],
+        };
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get_recent_customers",
+    "Retrieve recent customer conversations, optionally filtered by AI platform (chatgpt, claude, gemini, pplx). Useful for understanding what customers from a specific platform are asking about.",
+    {
+      platform: z
+        .enum(["chatgpt", "claude", "gemini", "pplx"])
+        .optional()
+        .describe(
+          "Filter by AI platform the customer came from (chatgpt, claude, gemini, pplx)"
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Number of customers to return (default 5, max 50)"),
+    },
+    async ({ platform, limit }) => {
+      try {
+        const results = await apiClient.getRecentCustomers(limit, platform);
+
+        if (!results || results.length === 0) {
+          const platformNote = platform ? ` from ${platform}` : "";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `No recent customers found${platformNote}.`,
+              },
+            ],
+          };
+        }
+
+        const customerSections = results.map((customer) => {
+          const label = customer.name ?? customer.email ?? "Unknown";
+          const header = `### ${label}`;
+          const summary = formatCustomerSummary(customer);
+          const hasTranscript =
+            customer.conversation && customer.conversation.length > 0;
+          const transcript = hasTranscript
+            ? `\n\n#### Transcript\n\n${formatTranscript(customer.conversation!)}`
+            : "";
+          return `${header}\n\n${summary}${transcript}`;
+        });
+
+        const platformNote = platform ? ` (platform: ${platform})` : "";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `## Recent Customers${platformNote}\n\n**Count:** ${results.length}\n\n---\n\n${customerSections.join("\n\n---\n\n")}`,
             },
           ],
         };

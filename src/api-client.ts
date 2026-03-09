@@ -23,14 +23,14 @@ export interface CustomerChatResponse {
   name?: string;
   email?: string;
   company?: string;
-  enrichedData?: Record<string, unknown>;
-  sources?: Array<Record<string, unknown>>;
+  platform?: string;
+  productsDiscussed?: string[];
   insights?: ChatInsights;
   suggestions?: string[];
-  turnCount?: number;
   summary?: string;
   conversation?: ConversationMessage[];
   progress?: number;
+  link?: string;
 }
 
 export interface CompanyResponse {
@@ -75,6 +75,19 @@ export class ThredApiClient {
   async getCustomerById(customerId: string): Promise<CustomerChatResponse> {
     return this.request<CustomerChatResponse>(
       `/customers/${encodeURIComponent(customerId)}`
+    );
+  }
+
+  async getRecentCustomers(
+    limit?: number,
+    platform?: string
+  ): Promise<CustomerChatResponse[]> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.set("limit", String(limit));
+    if (platform) params.set("platform", platform);
+    const qs = params.toString();
+    return this.request<CustomerChatResponse[]>(
+      `/customers/recent${qs ? `?${qs}` : ""}`
     );
   }
 
