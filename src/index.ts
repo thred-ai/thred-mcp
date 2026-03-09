@@ -272,6 +272,8 @@ async function startHttp() {
   function extractApiKey(req: express.Request): string | undefined {
     const auth = req.headers.authorization;
     if (auth?.startsWith("Bearer ")) return auth.substring(7);
+    const queryKey = req.query["apiKey"] as string | undefined;
+    if (queryKey) return queryKey;
     return undefined;
   }
 
