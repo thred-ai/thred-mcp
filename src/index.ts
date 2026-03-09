@@ -295,19 +295,21 @@ async function startHttp() {
 
     const client = new ThredApiClient(apiKey, BASE_URL);
     const server = createServer(client);
+
+    let capturedSessionId: string | undefined;
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
+      sessionIdGenerator: () => {
+        capturedSessionId = randomUUID();
+        return capturedSessionId;
+      },
     });
 
     await server.connect(transport);
-
-    const newSessionId =
-      (transport as unknown as { sessionId: string }).sessionId;
-    if (newSessionId) {
-      sessions.set(newSessionId, { transport, server });
-    }
-
     await transport.handleRequest(req, res, req.body);
+
+    if (capturedSessionId) {
+      sessions.set(capturedSessionId, { transport, server });
+    }
   });
 
   app.get("/v1", async (req, res) => {
