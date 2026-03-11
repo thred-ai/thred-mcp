@@ -8,3 +8,8 @@ NODE_ENV = "production"
 
 # Secrets (set via `npx wrangler secret put <NAME>`):
 # - THRED_BASE_URL
+
+[observability]
+[observability.logs]
+enabled = true
+invocation_logs = true
