@@ -4,8 +4,7 @@ import { ThredApiClient } from "../api-client.js";
 import {
   formatTranscript,
   formatCustomerSummary,
-  groupConversationsByDay,
-  platformLabel,
+  flattenConversations,
 } from "../utils/formatters.js";
 
 export function registerGetRecentCustomers(
@@ -67,28 +66,16 @@ export function registerGetRecentCustomers(
           };
         }
 
-        const dayGroups = groupConversationsByDay(results);
+        const entries = flattenConversations(results);
 
-        const daySections = dayGroups.map((group) => {
-          const platformSections = group.platforms.map((pg) => {
-            const platHeader = `#### ${platformLabel(pg.platform)} on ${group.label}`;
-
-            const customerSections = pg.conversations.map((customer) => {
-              const label = customer.name ?? customer.email ?? "Unknown";
-              const header = `##### ${label}`;
-              const summary = formatCustomerSummary(customer);
-              const hasTranscript =
-                customer.conversation && customer.conversation.length > 0;
-              const transcript = hasTranscript
-                ? `\n\n###### Transcript\n\n${formatTranscript(customer.conversation!)}`
-                : "";
-              return `${header}\n\n${summary}${transcript}`;
-            });
-
-            return `${platHeader}\n\n${customerSections.join("\n\n---\n\n")}`;
-          });
-
-          return `### ${group.label}\n\n${platformSections.join("\n\n---\n\n")}`;
+        const daySections = entries.map((entry) => {
+          const summary = formatCustomerSummary(entry.customer);
+          const hasTranscript =
+            entry.customer.conversation && entry.customer.conversation.length > 0;
+          const transcript = hasTranscript
+            ? `\n\n#### Transcript\n\n${formatTranscript(entry.customer.conversation!)}`
+            : "";
+          return `### ${entry.label}\n\n${summary}${transcript}`;
         });
 
         const platformsNote = platforms?.length

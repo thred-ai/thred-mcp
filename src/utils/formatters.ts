@@ -82,14 +82,16 @@ export function formatCustomerSummary(data: CustomerChatResponse): string {
   if (data.insights) {
     const { mainConcerns, buyingSignals, competitorsConsidered } =
       data.insights;
+    const priorityLabel = (p: number) =>
+      p >= 0.7 ? "high" : p >= 0.4 ? "medium" : "low";
     if (mainConcerns.length > 0) {
       lines.push(
-        `\n**Main Concerns:**\n${mainConcerns.map((c) => `- ${c.signal} (priority ${c.priority})`).join("\n")}`
+        `\n**Main Concerns:**\n${mainConcerns.map((c) => `- ${c.signal} (${priorityLabel(c.priority)} priority)`).join("\n")}`
       );
     }
     if (buyingSignals.length > 0) {
       lines.push(
-        `\n**Buying Signals:**\n${buyingSignals.map((s) => `- ${s.signal} (priority ${s.priority})`).join("\n")}`
+        `\n**Buying Signals:**\n${buyingSignals.map((s) => `- ${s.signal} (${priorityLabel(s.priority)} priority)`).join("\n")}`
       );
     }
     if (competitorsConsidered.length > 0) {
@@ -102,17 +104,6 @@ export function formatCustomerSummary(data: CustomerChatResponse): string {
   return lines.join("\n");
 }
 
-export interface PlatformGroup {
-  platform: string;
-  conversations: CustomerChatResponse[];
-}
-
-export interface DayGroup {
-  date: number;
-  label: string;
-  platforms: PlatformGroup[];
-}
-
 const PLATFORM_LABELS: Record<string, string> = {
   chatgpt: "ChatGPT Search",
   gemini: "Gemini Search",
@@ -120,57 +111,43 @@ const PLATFORM_LABELS: Record<string, string> = {
   claude: "Claude Search",
 };
 
-function platformLabel(platform?: string): string {
+export function platformLabel(platform?: string): string {
   return PLATFORM_LABELS[platform || "chatgpt"] || `${platform} Search`;
 }
 
+export interface ConversationEntry {
+  label: string;
+  customer: CustomerChatResponse;
+}
+
 /**
- * Group conversations by calendar day then by platform within each day.
- * Matches the frontend's AI Search History grouping.
+ * Flatten conversations into a list of entries labeled
+ * "[Platform] Search on [Date]", sorted by most recent turn first.
+ * Matches the frontend's AI Search History flat list.
  */
-export function groupConversationsByDay(
+export function flattenConversations(
   conversations: CustomerChatResponse[]
-): DayGroup[] {
-  const dayMap = new Map<string, { date: number; label: string; platMap: Map<string, CustomerChatResponse[]> }>();
-
-  for (const conv of conversations) {
-    const ts = conv.createdAt ?? Date.now();
-    const d = new Date(ts);
-    const dayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-
-    if (!dayMap.has(dayKey)) {
-      const date = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-      const label = new Intl.DateTimeFormat(undefined, {
+): ConversationEntry[] {
+  return conversations
+    .map((conv) => {
+      const ts = conv.createdAt ?? Date.now();
+      const dateLabel = new Intl.DateTimeFormat(undefined, {
         weekday: "short",
         month: "short",
         day: "numeric",
-      }).format(d);
-      dayMap.set(dayKey, { date, label, platMap: new Map() });
-    }
+      }).format(new Date(ts));
 
-    const day = dayMap.get(dayKey)!;
-    const plat = conv.platform || "chatgpt";
-    if (!day.platMap.has(plat)) {
-      day.platMap.set(plat, []);
-    }
-    day.platMap.get(plat)!.push(conv);
-  }
+      const latestTurn = Math.max(
+        ...(conv.conversation || []).map((m) => m.createdAt ?? 0),
+        ts
+      );
 
-  return Array.from(dayMap.values())
-    .sort((a, b) => b.date - a.date)
-    .map(({ date, label, platMap }) => ({
-      date,
-      label,
-      platforms: Array.from(platMap.entries())
-        .sort(([, a], [, b]) => {
-          const latestTurn = (convs: CustomerChatResponse[]) =>
-            Math.max(...convs.flatMap((c) =>
-              (c.conversation || []).map((m) => m.createdAt ?? 0)
-            ), 0);
-          return latestTurn(b) - latestTurn(a);
-        })
-        .map(([platform, conversations]) => ({ platform, conversations })),
-    }));
+      return {
+        label: `${platformLabel(conv.platform)} on ${dateLabel}`,
+        customer: conv,
+        _sortKey: latestTurn,
+      };
+    })
+    .sort((a, b) => b._sortKey - a._sortKey)
+    .map(({ label, customer }) => ({ label, customer }));
 }
-
-export { platformLabel };
