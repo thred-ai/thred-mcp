@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ThredApiClient } from "../api-client.js";
-import { formatCustomerSummary } from "../utils/formatters.js";
+import { formatConversationsResponse } from "../utils/formatters.js";
 
 export function registerGetCustomerInsights(
   server: McpServer,
@@ -9,44 +9,42 @@ export function registerGetCustomerInsights(
 ) {
   server.tool(
     "get_customer_insights",
-    "Retrieve insights, buying signals, concerns, and suggestions for a Thred customer. Lookup by email or customer ID.",
+    "Retrieve insights, buying signals, concerns, and competitors for a Thred customer. Lookup by email or customer ID.",
     {
       email: z
         .string()
         .email()
         .optional()
-        .describe("Customer email address (provide email or customerId)"),
+        .describe("Customer email address"),
       customerId: z
         .string()
+        .min(1)
         .optional()
-        .describe("Thred customer ID (provide email or customerId)"),
+        .describe("Thred customer ID"),
     },
     async ({ email, customerId }) => {
-      if (!email && !customerId) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Error: Provide either an email or customerId.",
-            },
-          ],
-          isError: true,
-        };
-      }
-
       try {
-        const data = email
-          ? await apiClient.getCustomerByEmail(email)
-          : await apiClient.getCustomerById(customerId!);
+        if (!email && !customerId) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Please provide either an email or customerId.",
+              },
+            ],
+            isError: true,
+          };
+        }
 
-        const label = email ?? customerId;
-        const summary = formatCustomerSummary(data);
+        const data = email
+          ? await apiClient.getConversationsByEmail(email)
+          : await apiClient.getConversationsById(customerId!);
 
         return {
           content: [
             {
               type: "text" as const,
-              text: `## Customer Insights for ${label}\n\n${summary}`,
+              text: formatConversationsResponse(data),
             },
           ],
         };

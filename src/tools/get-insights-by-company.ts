@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ThredApiClient } from "../api-client.js";
-import { formatTranscript, formatCustomerSummary, flattenConversations } from "../utils/formatters.js";
+import { formatConversationEntry } from "../utils/formatters.js";
 
 export function registerGetInsightsByCompany(
   server: McpServer,
@@ -9,7 +9,7 @@ export function registerGetInsightsByCompany(
 ) {
   server.tool(
     "get_insights_by_company",
-    "Retrieve all customer conversations and insights for a given company. Uses fuzzy company name matching. Returns a summary of each customer's conversation status, insights, and key signals.",
+    "Retrieve all customer conversations and insights for a given company. Uses fuzzy company name matching. Returns conversations grouped by platform and date.",
     {
       companyName: z
         .string()
@@ -18,37 +18,40 @@ export function registerGetInsightsByCompany(
     },
     async ({ companyName }) => {
       try {
-        const data = await apiClient.getCustomersByCompany(companyName);
+        const data = await apiClient.getConversationsByCompany(companyName);
 
-        if (!data.results || data.results.length === 0) {
+        if (!data.customers || data.customers.length === 0) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: `No customer conversations found for company "${data.company}".`,
+                text: `No conversations found for company "${data.company}".`,
               },
             ],
           };
         }
 
-        const entries = flattenConversations(data.results);
+        const totalConvos = data.customers.reduce(
+          (sum, c) => sum + c.conversations.length,
+          0
+        );
 
-        const sections = entries.map((entry) => {
-          const name = entry.customer.name ?? entry.customer.email ?? "Unknown";
-          const summary = formatCustomerSummary(entry.customer);
-          const hasTranscript =
-            entry.customer.conversation && entry.customer.conversation.length > 0;
-          const transcript = hasTranscript
-            ? `\n\n#### Transcript\n\n${formatTranscript(entry.customer.conversation!)}`
-            : "";
-          return `### ${entry.label}\n**${name}**\n\n${summary}${transcript}`;
-        });
+        const allConvos = data.customers.flatMap((c) =>
+          c.conversations.map((conv) => ({
+            conv,
+            customerName: c.customer.name,
+          }))
+        );
+
+        const sections = allConvos.map(({ conv, customerName }) =>
+          formatConversationEntry(conv, customerName)
+        );
 
         return {
           content: [
             {
               type: "text" as const,
-              text: `## Company: ${data.company}\n\n**Total conversations:** ${data.results.length}\n\n---\n\n${sections.join("\n\n---\n\n")}`,
+              text: `## ${data.company}\n\n**${totalConvos} conversation${totalConvos !== 1 ? "s" : ""}** across ${data.customers.length} customer${data.customers.length !== 1 ? "s" : ""}\n\n---\n\n${sections.join("\n\n---\n\n")}`,
             },
           ],
         };
