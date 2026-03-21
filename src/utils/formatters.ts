@@ -102,38 +102,75 @@ export function formatCustomerSummary(data: CustomerChatResponse): string {
   return lines.join("\n");
 }
 
-export interface DayGroup {
-  date: number;
-  label: string;
+export interface PlatformGroup {
+  platform: string;
   conversations: CustomerChatResponse[];
 }
 
+export interface DayGroup {
+  date: number;
+  label: string;
+  platforms: PlatformGroup[];
+}
+
+const PLATFORM_LABELS: Record<string, string> = {
+  chatgpt: "ChatGPT Search",
+  gemini: "Gemini Search",
+  pplx: "Perplexity Search",
+  claude: "Claude Search",
+};
+
+function platformLabel(platform?: string): string {
+  return PLATFORM_LABELS[platform || "chatgpt"] || `${platform} Search`;
+}
+
 /**
- * Group conversations by calendar day, sorted newest-first.
- * Mirrors the grouping logic used in the frontend NotesInterface.
+ * Group conversations by calendar day then by platform within each day.
+ * Matches the frontend's AI Search History grouping.
  */
 export function groupConversationsByDay(
   conversations: CustomerChatResponse[]
 ): DayGroup[] {
-  const groupMap = new Map<string, DayGroup>();
+  const dayMap = new Map<string, { date: number; label: string; platMap: Map<string, CustomerChatResponse[]> }>();
 
   for (const conv of conversations) {
     const ts = conv.createdAt ?? Date.now();
     const d = new Date(ts);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const dayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 
-    if (!groupMap.has(key)) {
+    if (!dayMap.has(dayKey)) {
       const date = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const label = new Intl.DateTimeFormat(undefined, {
         weekday: "short",
         month: "short",
         day: "numeric",
       }).format(d);
-      groupMap.set(key, { date, label, conversations: [] });
+      dayMap.set(dayKey, { date, label, platMap: new Map() });
     }
 
-    groupMap.get(key)!.conversations.push(conv);
+    const day = dayMap.get(dayKey)!;
+    const plat = conv.platform || "chatgpt";
+    if (!day.platMap.has(plat)) {
+      day.platMap.set(plat, []);
+    }
+    day.platMap.get(plat)!.push(conv);
   }
 
-  return Array.from(groupMap.values()).sort((a, b) => b.date - a.date);
+  return Array.from(dayMap.values())
+    .sort((a, b) => b.date - a.date)
+    .map(({ date, label, platMap }) => ({
+      date,
+      label,
+      platforms: Array.from(platMap.entries())
+        .sort(([, a], [, b]) => {
+          const latestTurn = (convs: CustomerChatResponse[]) =>
+            Math.max(...convs.flatMap((c) =>
+              (c.conversation || []).map((m) => m.createdAt ?? 0)
+            ), 0);
+          return latestTurn(b) - latestTurn(a);
+        })
+        .map(([platform, conversations]) => ({ platform, conversations })),
+    }));
 }
+
+export { platformLabel };
