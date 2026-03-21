@@ -16,7 +16,11 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["Service"]
+new_classes = ["McpSession"]
+
+[[migrations]]
+tag = "v2"
+renamed_classes = [{ from = "McpSession", to = "Service" }]
 
 [observability]
 enabled = false
