@@ -1,31 +1,12 @@
 import * as Sentry from "@sentry/cloudflare";
 import { Hono } from "hono";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { ThredApiClient } from "./api-client.js";
-import { registerTools } from "./tools/index.js";
 import type { Bindings } from "./types/env.js";
+
+export { McpSession } from "./durable-objects/mcp-session.js";
 
 type Env = { Bindings: Bindings };
 
 const app = new Hono<Env>();
-
-const sessions = new Map<
-  string,
-  {
-    transport: WebStandardStreamableHTTPServerTransport;
-    server: McpServer;
-  }
->();
-
-function createServer(apiClient: ThredApiClient): McpServer {
-  const server = new McpServer({
-    name: "thred-mcp",
-    version: "1.0.0",
-  });
-  registerTools(server, apiClient);
-  return server;
-}
 
 function extractApiKey(
   authHeader: string | undefined,
@@ -37,34 +18,11 @@ function extractApiKey(
 }
 
 app.all("/v1", async (c) => {
-  const sessionId = c.req.header("mcp-session-id");
-
-  if (sessionId && sessions.has(sessionId)) {
-    return sessions.get(sessionId)!.transport.handleRequest(c.req.raw);
-  }
-
-  if (sessionId) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: {
-          code: -32600,
-          message: "Session not found. Please reinitialize.",
-        },
-        id: null,
-      },
-      404
-    );
-  }
-
-  if (c.req.method !== "POST") {
-    return c.json({ error: "Method not allowed without session" }, 405);
-  }
-
   const apiKey = extractApiKey(
-    c.req.header("authorization"),
+    c.req.header("authorization") ?? undefined,
     c.req.url
   );
+
   if (!apiKey) {
     return c.json(
       {
@@ -75,21 +33,10 @@ app.all("/v1", async (c) => {
     );
   }
 
-  const client = new ThredApiClient(apiKey, c.env.THRED_BASE_URL);
-  const server = createServer(client);
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: () => crypto.randomUUID(),
-    onsessioninitialized: (id) => {
-      sessions.set(id, { transport, server });
-    },
-    onsessionclosed: (id) => {
-      sessions.delete(id);
-    },
-    enableJsonResponse: true,
-  });
+  const id = c.env.MCP_SESSION.idFromName(apiKey);
+  const stub = c.env.MCP_SESSION.get(id);
 
-  await server.connect(transport);
-  return transport.handleRequest(c.req.raw);
+  return stub.fetch(c.req.raw);
 });
 
 app.get("/health", (c) => {

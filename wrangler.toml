@@ -9,6 +9,15 @@ NODE_ENV = "production"
 # Secrets (set via `npx wrangler secret put <NAME>`):
 # - THRED_BASE_URL
 
+[durable_objects]
+bindings = [
+  { name = "MCP_SESSION", class_name = "McpSession" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["McpSession"]
+
 [observability]
 enabled = false
 head_sampling_rate = 1
