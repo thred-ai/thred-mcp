@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ThredApiClient } from "../api-client.js";
-import { formatTranscript, formatCustomerSummary } from "../utils/formatters.js";
+import { formatTranscript, formatCustomerSummary, flattenConversations } from "../utils/formatters.js";
 
 export function registerGetInsightsByCompany(
   server: McpServer,
@@ -31,23 +31,24 @@ export function registerGetInsightsByCompany(
           };
         }
 
-        const customerSections = data.results.map((customer) => {
-          const label = customer.name ?? customer.email ?? "Unknown";
-          const header = `### ${label}`;
-          const summary = formatCustomerSummary(customer);
+        const entries = flattenConversations(data.results);
+
+        const sections = entries.map((entry) => {
+          const name = entry.customer.name ?? entry.customer.email ?? "Unknown";
+          const summary = formatCustomerSummary(entry.customer);
           const hasTranscript =
-            customer.conversation && customer.conversation.length > 0;
+            entry.customer.conversation && entry.customer.conversation.length > 0;
           const transcript = hasTranscript
-            ? `\n\n#### Transcript\n\n${formatTranscript(customer.conversation!)}`
+            ? `\n\n#### Transcript\n\n${formatTranscript(entry.customer.conversation!)}`
             : "";
-          return `${header}\n\n${summary}${transcript}`;
+          return `### ${entry.label}\n**${name}**\n\n${summary}${transcript}`;
         });
 
         return {
           content: [
             {
               type: "text" as const,
-              text: `## Company: ${data.company}\n\n**Total conversations:** ${data.results.length}\n\n---\n\n${customerSections.join("\n\n---\n\n")}`,
+              text: `## Company: ${data.company}\n\n**Total conversations:** ${data.results.length}\n\n---\n\n${sections.join("\n\n---\n\n")}`,
             },
           ],
         };
