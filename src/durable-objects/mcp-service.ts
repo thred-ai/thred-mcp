@@ -5,7 +5,7 @@ import { ThredApiClient } from "../api-client.js";
 import { registerTools } from "../tools/index.js";
 import type { Bindings } from "../types/env.js";
 
-export class McpSession extends DurableObject<Bindings> {
+export class Service extends DurableObject<Bindings> {
   private sessions = new Map<
     string,
     {

@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/cloudflare";
 import { Hono } from "hono";
 import type { Bindings } from "./types/env.js";
 
-export { McpSession } from "./durable-objects/mcp-session.js";
+export { Service } from "./durable-objects/mcp-service.js";
 
 type Env = { Bindings: Bindings };
 
@@ -33,8 +33,8 @@ app.all("/v1", async (c) => {
     );
   }
 
-  const id = c.env.MCP_SESSION.idFromName(apiKey);
-  const stub = c.env.MCP_SESSION.get(id);
+  const id = c.env.SERVICE.idFromName(apiKey);
+  const stub = c.env.SERVICE.get(id);
 
   return stub.fetch(c.req.raw);
 });
