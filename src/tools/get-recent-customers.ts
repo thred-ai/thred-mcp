@@ -1,11 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ThredApiClient } from "../api-client.js";
-import {
-  formatTranscript,
-  formatCustomerSummary,
-  flattenConversations,
-} from "../utils/formatters.js";
+import { formatConversationEntry } from "../utils/formatters.js";
 
 export function registerGetRecentCustomers(
   server: McpServer,
@@ -13,13 +9,13 @@ export function registerGetRecentCustomers(
 ) {
   server.tool(
     "get_recent_customers",
-    "Retrieve recent customer conversations, optionally filtered by AI platforms and/or date range. Results are grouped by day (newest first). Useful for questions like 'what are customers from claude asking today?' or 'show me conversations from last week'.",
+    "Retrieve recent customer conversations, optionally filtered by AI platforms. Results are formatted as a flat list of conversations sorted by most recent activity, each labeled with the platform and date.",
     {
       platforms: z
         .array(z.string())
         .optional()
         .describe(
-          "Filter by AI platform(s) the customer came from (e.g. chatgpt, claude, gemini, pplx). Only include if the user asks about specific platforms."
+          "Filter by AI platform(s) (e.g. chatgpt, claude, gemini, pplx). Only include if the user asks about specific platforms."
         ),
       limit: z
         .number()
@@ -28,64 +24,42 @@ export function registerGetRecentCustomers(
         .max(50)
         .optional()
         .describe(
-          "Number of customers to return (default 3, max 50). If the user doesn't specify a number, use 3."
-        ),
-      startDate: z
-        .number()
-        .optional()
-        .describe(
-          "Filter customers created on or after this date (Unix timestamp in milliseconds)"
-        ),
-      endDate: z
-        .number()
-        .optional()
-        .describe(
-          "Filter customers created on or before this date (Unix timestamp in milliseconds)"
+          "Number of customers to return (default 3, max 50)."
         ),
     },
-    async ({ platforms, limit, startDate, endDate }) => {
+    async ({ platforms, limit }) => {
       try {
-        const results = await apiClient.getRecentCustomers(
-          limit,
-          platforms,
-          startDate,
-          endDate
-        );
+        const results = await apiClient.getRecentConversations(limit, platforms);
 
         if (!results || results.length === 0) {
-          const platformsNote = platforms?.length
-            ? ` from ${platforms.join(", ")}`
-            : "";
           return {
             content: [
               {
                 type: "text" as const,
-                text: `No recent customers found${platformsNote}.`,
+                text: "No recent conversations found.",
               },
             ],
           };
         }
 
-        const entries = flattenConversations(results);
+        const allConvos = results.flatMap((r) =>
+          r.conversations.map((conv) => ({
+            conv,
+            customerName: r.customer.name,
+            company: r.customer.company,
+          }))
+        );
 
-        const daySections = entries.map((entry) => {
-          const summary = formatCustomerSummary(entry.customer);
-          const hasTranscript =
-            entry.customer.conversation && entry.customer.conversation.length > 0;
-          const transcript = hasTranscript
-            ? `\n\n#### Transcript\n\n${formatTranscript(entry.customer.conversation!)}`
-            : "";
-          return `### ${entry.label}\n\n${summary}${transcript}`;
+        const sections = allConvos.map(({ conv, customerName, company }) => {
+          const name = company ? `${customerName} (${company})` : customerName;
+          return formatConversationEntry(conv, name);
         });
 
-        const platformsNote = platforms?.length
-          ? ` (platforms: ${platforms.join(", ")})`
-          : "";
         return {
           content: [
             {
               type: "text" as const,
-              text: `## Recent Customers${platformsNote}\n\n**Count:** ${results.length}\n\n---\n\n${daySections.join("\n\n---\n\n")}`,
+              text: sections.join("\n\n---\n\n"),
             },
           ],
         };

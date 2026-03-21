@@ -1,43 +1,37 @@
 const DEFAULT_BASE_URL = "http://localhost:8080";
 
-export interface ConversationMessage {
-  role: "user" | "assistant";
-  content: string;
-  createdAt?: number;
-}
-
-export interface ChatInsightItem {
-  signal: string;
-  turn: number;
-  location: "query" | "response";
-  priority: number;
-}
-
-export interface ChatInsights {
-  mainConcerns: ChatInsightItem[];
-  buyingSignals: ChatInsightItem[];
-  competitorsConsidered: ChatInsightItem[];
-}
-
-export interface CustomerChatResponse {
-  status: "pending" | "processing" | "completed" | "failed";
-  name?: string;
-  email?: string;
-  company?: string;
-  platform?: string;
-  productsDiscussed?: string[];
-  insights?: ChatInsights;
-  suggestions?: string[];
+export interface FormattedConversation {
+  platform: string;
+  platformLabel: string;
+  date: string;
+  label: string;
+  insights: {
+    buyingSignals: { signal: string; priority: string }[];
+    mainConcerns: { signal: string; priority: string }[];
+    competitorsConsidered: { signal: string }[];
+  };
+  queries: {
+    query: string;
+    time: string;
+    turnNumber: number;
+  }[];
   summary?: string;
-  conversation?: ConversationMessage[];
-  progress?: number;
-  createdAt?: number;
-  link?: string;
+  link: string;
 }
 
-export interface CompanyResponse {
+export interface ConversationsResponse {
+  customer: {
+    id: string;
+    name: string;
+    email: string;
+    company?: string;
+  };
+  conversations: FormattedConversation[];
+}
+
+export interface CompanyConversationsResponse {
   company: string;
-  results: CustomerChatResponse[];
+  customers: ConversationsResponse[];
 }
 
 export class ThredApiClient {
@@ -68,38 +62,34 @@ export class ThredApiClient {
     return response.json() as Promise<T>;
   }
 
-  async getCustomerByEmail(email: string): Promise<CustomerChatResponse> {
-    return this.request<CustomerChatResponse>(
-      `/customers?email=${encodeURIComponent(email)}`
+  async getConversationsByEmail(email: string): Promise<ConversationsResponse> {
+    return this.request<ConversationsResponse>(
+      `/conversations?email=${encodeURIComponent(email)}`
     );
   }
 
-  async getCustomerById(customerId: string): Promise<CustomerChatResponse> {
-    return this.request<CustomerChatResponse>(
-      `/customers/${encodeURIComponent(customerId)}`
+  async getConversationsById(customerId: string): Promise<ConversationsResponse> {
+    return this.request<ConversationsResponse>(
+      `/conversations?customerId=${encodeURIComponent(customerId)}`
     );
   }
 
-  async getRecentCustomers(
+  async getConversationsByCompany(companyName: string): Promise<CompanyConversationsResponse> {
+    return this.request<CompanyConversationsResponse>(
+      `/conversations/by-company?name=${encodeURIComponent(companyName)}`
+    );
+  }
+
+  async getRecentConversations(
     limit?: number,
     platforms?: string[],
-    startDate?: number,
-    endDate?: number
-  ): Promise<CustomerChatResponse[]> {
+  ): Promise<ConversationsResponse[]> {
     const params = new URLSearchParams();
     if (limit !== undefined) params.set("limit", String(limit));
     if (platforms?.length) params.set("platforms", platforms.join(","));
-    if (startDate !== undefined) params.set("startDate", String(startDate));
-    if (endDate !== undefined) params.set("endDate", String(endDate));
     const qs = params.toString();
-    return this.request<CustomerChatResponse[]>(
-      `/customers/recent${qs ? `?${qs}` : ""}`
-    );
-  }
-
-  async getCustomersByCompany(companyName: string): Promise<CompanyResponse> {
-    return this.request<CompanyResponse>(
-      `/customers/by-company?name=${encodeURIComponent(companyName)}`
+    return this.request<ConversationsResponse[]>(
+      `/conversations/recent${qs ? `?${qs}` : ""}`
     );
   }
 
